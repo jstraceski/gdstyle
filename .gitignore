@@ -18,3 +18,7 @@ CLAUDE.md
 .aider*
 .vscode/
 .idea/
+
+# machine-local files
+.nvim.lua
+shell.nix
