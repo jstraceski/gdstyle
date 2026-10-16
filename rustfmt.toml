@@ -1,0 +1,27 @@
+# The maximum line width before wrapping
+max_width = 100
+
+# Number of spaces per tab level
+tab_spaces = 4
+
+# Use spaces instead of hard tabs
+hard_tabs = false
+
+# How to layout imports (can be "Standard", "Granular", or "One")
+imports_granularity = "Preserve"
+
+# Group and order imports alphabetically
+reorder_imports = true
+
+# Reorder top-level modules alphabetically
+reorder_modules = true
+
+# How to handle trailing commas in multiline constructs
+# Options: "Always", "Never", "Vertical"
+trailing_comma = "Vertical"
+
+# The Rust language edition used for parsing (e.g., "2015", "2018", "2021")
+# Defaults to 2015 if run standalone, but `cargo fmt` automatically 
+# overrides this based on your Cargo.toml file.
+edition = "2015"
+

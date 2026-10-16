@@ -44,7 +44,7 @@ pub fn check_max_line_length(
     config: &Config,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    const TAB_WIDTH: usize = 4;
+    let tab_width: usize = config.indent_size;
     let string_line_mask = StringLines::new(tokens, file.lines.len());
     for (i, line) in file.lines.iter().enumerate() {
         let line_num = i + 1;
@@ -56,11 +56,11 @@ pub fn check_max_line_length(
             else {
                 continue;
             };
-            if visual_line_length(string_data, TAB_WIDTH) > config.max_line_length {
+            if visual_line_length(string_data, tab_width) > config.max_line_length {
                 continue;
             }
         }
-        let visual_len = visual_line_length(line, TAB_WIDTH);
+        let visual_len = visual_line_length(line, tab_width);
         if visual_len > config.max_line_length {
             diagnostics.push(Diagnostic::warning(
                 "format/max-line-length",
@@ -156,16 +156,19 @@ pub fn check_trailing_newline(file: &ScriptFile, diagnostics: &mut Vec<Diagnosti
 /// `indent` (a run of tabs and spaces) as `format/no-tabs-as-spaces` rewrites
 /// it: with tabs, every 4 columns become a tab (a spaces-only indent becomes
 /// at least one); with spaces, each tab becomes 4 spaces.
-fn indent_in_configured_style(indent: &str, use_tabs: bool) -> String {
+fn indent_in_configured_style(indent: &str, config: &Config) -> String {
     let has_tabs = indent.contains('\t');
     let has_spaces = indent.contains(' ');
-    if use_tabs && has_tabs && has_spaces {
-        let width: usize = indent.chars().map(|c| if c == '\t' { 4 } else { 1 }).sum();
-        "\t".repeat(width / 4)
-    } else if use_tabs && has_spaces {
-        "\t".repeat((indent.len() / 4).max(1))
-    } else if !use_tabs {
-        indent.replace('\t', "    ")
+    if config.use_tabs && has_tabs && has_spaces {
+        let width: usize = indent
+            .chars()
+            .map(|c| if c == '\t' { config.indent_size } else { 1 })
+            .sum();
+        "\t".repeat(width / config.indent_size)
+    } else if config.use_tabs && has_spaces {
+        "\t".repeat((indent.len() / config.indent_size).max(1))
+    } else if !config.use_tabs {
+        indent.replace('\t', &" ".repeat(config.indent_size))
     } else {
         indent.to_string()
     }
@@ -201,7 +204,7 @@ pub fn check_indentation_style(
 
         // Mixed indentation is always wrong.
         if has_tabs && has_spaces {
-            let new_indent = indent_in_configured_style(&indent, config.use_tabs);
+            let new_indent = indent_in_configured_style(&indent, config);
             diagnostics.push(
                 Diagnostic::warning(
                     "format/no-tabs-as-spaces",
@@ -222,7 +225,7 @@ pub fn check_indentation_style(
         }
 
         if config.use_tabs && has_spaces {
-            let new_indent = indent_in_configured_style(&indent, config.use_tabs);
+            let new_indent = indent_in_configured_style(&indent, config);
             diagnostics.push(
                 Diagnostic::warning(
                     "format/no-tabs-as-spaces",
@@ -240,7 +243,7 @@ pub fn check_indentation_style(
                 }),
             );
         } else if !config.use_tabs && has_tabs {
-            let new_indent = indent_in_configured_style(&indent, config.use_tabs);
+            let new_indent = indent_in_configured_style(&indent, config);
             diagnostics.push(
                 Diagnostic::warning(
                     "format/no-tabs-as-spaces",
@@ -1640,8 +1643,12 @@ fn build_enum_multiline_fix(
     // Indent like `format/no-tabs-as-spaces` will rewrite the enum line, so
     // one `--fix` run settles; with that rule off, keep the line's own style.
     let (indent, indent_unit) = if config.is_rule_enabled("format/no-tabs-as-spaces") {
-        let unit = if config.use_tabs { "\t" } else { "    " };
-        (indent_in_configured_style(&indent, config.use_tabs), unit)
+        let unit = if config.use_tabs {
+            "\t".to_string()
+        } else {
+            " ".repeat(config.indent_size)
+        };
+        (indent_in_configured_style(&indent, config), unit)
     } else {
         let unit = match indent.chars().next() {
             Some('\t') => "\t",

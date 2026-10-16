@@ -138,6 +138,12 @@ impl GdStyle {
         self.config.use_tabs = use_tabs;
     }
 
+    /// Set the number of spaces to use for indentation.
+    #[func]
+    fn set_tab_size(&mut self, size: i64) {
+        self.config.indent_size = size.max(0) as usize;
+    }
+
     /// Disable a specific rule by name.
     #[func]
     fn disable_rule(&mut self, rule_name: GString) {

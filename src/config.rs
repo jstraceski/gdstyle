@@ -13,6 +13,9 @@ pub struct Config {
     /// Whether to use tabs for indentation (default: true).
     pub use_tabs: bool,
 
+    /// Spaces to use for indentation.
+    pub indent_size: usize,
+
     /// Maximum function body length in lines (default: 50).
     pub max_function_length: usize,
 
@@ -125,6 +128,7 @@ impl Default for Config {
             max_inner_classes: 5,
             large_number_threshold: 10_000,
             blank_line_between_public_and_private: false,
+            indent_size: 2,
             exclude: vec![".godot".to_string(), "addons".to_string()],
             include: Vec::new(),
             rules: HashMap::new(),
