@@ -44,7 +44,7 @@ pub fn check_max_line_length(
     config: &Config,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    let tab_width: usize = config.indent_size;
+    let tab_width: usize = 4;
     let string_line_mask = StringLines::new(tokens, file.lines.len());
     for (i, line) in file.lines.iter().enumerate() {
         let line_num = i + 1;
@@ -1651,17 +1651,17 @@ fn build_enum_multiline_fix(
         (indent_in_configured_style(&indent, config), unit)
     } else {
         let unit = match indent.chars().next() {
-            Some('\t') => "\t",
-            Some(_) => "    ",
-            None if config.use_tabs => "\t",
-            None => "    ",
+            Some('\t') => "\t".to_string(),
+            Some(_) => " ".repeat(config.indent_size),
+            None if config.use_tabs => "\t".to_string(),
+            None => " ".repeat(config.indent_size),
         };
         (indent, unit)
     };
     let mut new_text = String::from("\n");
     for (start, end) in members {
         new_text.push_str(&indent);
-        new_text.push_str(indent_unit);
+        new_text.push_str(&indent_unit);
         new_text.push_str(&source[start..end]);
         new_text.push_str(",\n");
     }
@@ -1951,11 +1951,12 @@ mod tests {
 
     #[test]
     fn enum_fix_indents_members_like_the_indentation_rule() {
-        // The indentation rule turns the enum line's four spaces into a tab
-        // in the same run, so members and `}` use tabs to match.
+        // The indentation rule turns the enum line's four spaces into two
+        // tabs (indent_size = 2) in the same run, so members and `}` use
+        // tabs to match.
         assert_eq!(
             enum_fix("class A:\n    enum E {X, Y}\n"),
-            "class A:\n    enum E {\n\t\tX,\n\t\tY,\n\t}\n"
+            "class A:\n    enum E {\n\t\t\tX,\n\t\t\tY,\n\t\t}\n"
         );
         // An unindented enum follows the configured style.
         let source = "enum E {X, Y}\n";
@@ -1971,7 +1972,7 @@ mod tests {
         };
         let mut diags = Vec::new();
         check_enum_one_per_line(&tokens, &file, &config, Some(source), &mut diags);
-        assert_eq!(apply(source, &diags), "enum E {\n    X,\n    Y,\n}\n");
+        assert_eq!(apply(source, &diags), "enum E {\n  X,\n  Y,\n}\n");
     }
 
     #[test]

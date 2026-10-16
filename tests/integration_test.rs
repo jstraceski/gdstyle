@@ -15,7 +15,9 @@ fn parse_members_for_test(source: &str) -> Vec<ClassMember> {
 }
 
 fn default_config() -> Config {
-    Config::default()
+    // The integration fixtures are tab-indented, so use the valid tab
+    // convention: one tab per level.
+    Config { use_tabs: true, indent_size: 1, ..Config::default() }
 }
 
 fn fixture_path(name: &str) -> std::path::PathBuf {
@@ -3299,6 +3301,8 @@ fn fmt_leaves_marker_lookalike_inside_multiline_string_alone() {
 fn public_private_separator_config() -> Config {
     Config {
         blank_line_between_public_and_private: true,
+        use_tabs: true,
+        indent_size: 1,
         ..Config::default()
     }
 }

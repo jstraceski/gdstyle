@@ -106,7 +106,8 @@ fn format_pass_with(source: &str, config: &Config, spanning_strings: SpanningStr
     // 11. Break long lines by wrapping at commas inside delimiters.
     result = break_long_lines(&result, config, spanning_strings);
 
-    result = renormalize_indentation2(&result, config);
+    let renorm_mask = string_lines(&result, spanning_strings);
+    result = renormalize_indentation2(&result, config, &renorm_mask);
     // result = renormalize_indentation(&result, config);
 
     result
@@ -847,12 +848,10 @@ fn lint_then_fix(source: &str, config: &Config) -> String {
 
 fn ends_with_gdscript_block_colon(line: &str) -> bool {
     let mut scanner = StringScanner::new();
-    let mut prior: Option<char> = None;
     let mut last_code_char: Option<char> = None;
 
     for ch in line.chars() {
-        let in_string = scanner.step(prior, ch);
-        prior = Some(ch);
+        let in_string = scanner.step(ch);
 
         if in_string {
             continue;
@@ -971,22 +970,38 @@ fn indent_func(trimmed_line: &str, line: &str, state: &mut IndentState, config: 
     }
 }
 
-fn renormalize_indentation2(source: &str, config: &Config) -> String {
+fn renormalize_indentation2(
+    source: &str,
+    config: &Config,
+    string_line_mask: &StringLines,
+) -> String {
     let mut result = String::new();
     let mut block_openers: Vec<usize> = Vec::new();
     let mut paren_tracker: Vec<char> = Vec::new();
     let mut pb_tracker: Vec<usize> = Vec::new();
-    println!("\n=== [MAIN LOOP START] ===");
-    println!("SOURCE:\n{}", source);
 
     let mut d: usize = 0;
     let mut last_paren_len = 0;
     let delim = if config.use_tabs { "\t" } else { " " };
     let mut last_slash: bool = false;
-    for (_, line) in source.lines().enumerate() {
-        let trimmed_line = line.trim();
+    // `split('\n')` (unlike `lines()`) keeps a trailing `\r` on CRLF lines,
+    // so string interiors keep their own line endings.
+    for (i, line) in source.split('\n').enumerate() {
+        // Lines inside a multi-line string are string data: copy them
+        // verbatim and keep them out of the indentation state.
+        if string_line_mask.is_interior(i) {
+            result.push_str(line);
+            result.push('\n');
+            continue;
+        }
+        // On a line that ends inside a string, the trailing whitespace is
+        // string content, so only trim the start.
+        let trimmed_line = if string_line_mask.ends_inside(i) {
+            line.trim_start()
+        } else {
+            line.trim()
+        };
         if trimmed_line.is_empty() {
-            println!("EMPTY LINE |{:?}|", line);
             result.push('\n');
             continue;
         }
@@ -1149,8 +1164,6 @@ fn renormalize_indentation(source: &str, config: &Config) -> String {
         block_openers: Vec::new(),
     };
 
-    println!("\n=== [MAIN LOOP START] ===");
-
     for (idx, line) in source.lines().enumerate() {
         let trimmed = line.trim_start();
         let line_num = idx + 1;
@@ -1247,13 +1260,11 @@ fn renormalize_indentation(source: &str, config: &Config) -> String {
 
 fn update_state_after_line(line: &str, state: &mut IndentState, config: &Config) {
     let mut scanner = StringScanner::new();
-    let mut prior: Option<char> = None;
     let mut clean_line_without_comments = String::new();
     let trimmed_line = line.trim_start();
 
     for ch in line.chars() {
-        let in_string = scanner.step(prior, ch);
-        prior = Some(ch);
+        let in_string = scanner.step(ch);
         if in_string {
             clean_line_without_comments.push(' ');
             continue;
@@ -1334,7 +1345,7 @@ fn break_long_lines(source: &str, config: &Config, spanning_strings: SpanningStr
     let mut i = 0;
     while i < lines.len() {
         let line = lines[i];
-        let visual_len = visual_line_len(line, config.indent_size);
+        let visual_len = visual_line_len(line, 4);
 
         if visual_len <= max_len || string_line_mask.is_interior(i) {
             result.push(line.to_string());
@@ -1625,7 +1636,7 @@ fn try_break_comment(line: &str, max_len: usize, config: &Config) -> Option<Vec<
         ("# ", content.strip_prefix("# ")?)
     };
 
-    let prefix_visual_len = visual_line_len(&format!("{}{}", indent, prefix), config.indent_size);
+    let prefix_visual_len = visual_line_len(&format!("{}{}", indent, prefix), 4);
 
     // Split text into words and wrap.
     let words: Vec<&str> = text.split_whitespace().collect();
@@ -2728,8 +2739,10 @@ mod tests {
         // The body is dedented and re-indented line by line; string lines
         // must come through as they are: a four-space line, a spaces-only
         // line, and a line that looks like a class header.
+        // One tab per level, so select that convention.
+        let config = Config { indent_size: 1, ..Config::default() };
         let source = "extends Node\n\n\nclass A:\n\tvar v = 1\n\tconst X = \"\"\"\nclass Fake:\n    x\n   \n\t\"\"\"\n";
-        let formatted = format_source(source, &Config::default());
+        let formatted = format_source(source, &config);
         assert!(
             formatted.contains("\tconst X = \"\"\"\nclass Fake:\n    x\n   \n\t\"\"\"\n"),
             "{formatted:?}"
@@ -2744,8 +2757,10 @@ mod tests {
     fn inner_class_reorder_keeps_crlf_blank_line_in_string() {
         // Reduced from a real plugin: the blank line inside the string is
         // `\r` once the file is normalized and must keep it.
+        // One tab per level, so select that convention.
+        let config = Config { indent_size: 1, ..Config::default() };
         let source = "class A extends B:\r\n\tconst X = \"\"\"\r\n\r\n\tconst Y = \"\"\"\r\n";
-        assert_eq!(format_source(source, &Config::default()), source);
+        assert_eq!(format_source(source, &config), source);
     }
 
     #[test]
@@ -2794,10 +2809,12 @@ mod tests {
     #[test]
     fn format_source_keeps_closing_line_followed_by_another_string() {
         // A second string on the closing line must not clear that line's mask.
+        // These fixtures use one tab per level, so select that convention.
+        let config = Config { indent_size: 1, ..Config::default() };
         let tail = "func f() -> String:\n\tvar s := \"\"\"\nline\n    closing indent kept\"\"\" % \"x\"\n\treturn s\n";
-        assert_eq!(format_source(tail, &Config::default()), tail);
+        assert_eq!(format_source(tail, &config), tail);
         let pair = "var t := \"\"\"a\n    b\"\"\" + \"\"\"c\n    d\"\"\"\n";
-        assert_eq!(format_source(pair, &Config::default()), pair);
+        assert_eq!(format_source(pair, &config), pair);
     }
 
     #[test]
